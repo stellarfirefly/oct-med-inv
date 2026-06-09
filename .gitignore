@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.netlify/
+.vite/
+*.local
+*.tsbuildinfo
+npm-debug.log*
+*.log

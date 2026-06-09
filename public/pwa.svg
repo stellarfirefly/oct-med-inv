@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="OTC Inventory">
+  <rect width="512" height="512" rx="104" fill="#0f766e"/>
+  <path fill="#ffffff" d="M152 168c0-31 25-56 56-56h96c31 0 56 25 56 56v176c0 31-25 56-56 56h-96c-31 0-56-25-56-56V168Zm56-16c-9 0-16 7-16 16v176c0 9 7 16 16 16h96c9 0 16-7 16-16V168c0-9-7-16-16-16h-96Z"/>
+  <path fill="#99f6e4" d="M216 232h80v48h-80zM240 208h32v96h-32z"/>
+</svg>
