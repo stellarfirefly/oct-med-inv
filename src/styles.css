@@ -318,6 +318,17 @@ textarea {
   padding-top: 1.25rem;
 }
 
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
 .concept-maintenance,
 .product-maintenance {
   grid-column: span 3;

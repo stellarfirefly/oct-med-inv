@@ -13,7 +13,8 @@ import {
   Settings,
   Trash2
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { parseBackup, serializeBackup } from "./database/repositories/backupRepository";
 import { buildInventoryCsv, downloadCsv, type ReportMode } from "./reporting/csv";
 import { lookupProductByUpc } from "./productLookup/upcProductLookup";
 import type { ConceptSummary, MedicationForm } from "./types/domain";
@@ -112,6 +113,8 @@ export const App = () => {
         <SettingsView
           snapshot={snapshot}
           deleteDeprecatedProducts={actions.deleteDeprecatedProducts}
+          exportBackup={actions.exportBackup}
+          importBackup={actions.importBackup}
           updateSettings={actions.updateSettings}
         />
       )}
@@ -930,13 +933,21 @@ const conceptStatusLabel = (summary: ConceptSummary) => (summary.isLowStock ? "r
 const SettingsView = ({
   snapshot,
   deleteDeprecatedProducts,
+  exportBackup,
+  importBackup,
   updateSettings
 }: { snapshot: InventorySnapshot } & {
   deleteDeprecatedProducts: ReturnType<typeof useInventory>["actions"]["deleteDeprecatedProducts"];
+  exportBackup: ReturnType<typeof useInventory>["actions"]["exportBackup"];
+  importBackup: ReturnType<typeof useInventory>["actions"]["importBackup"];
   updateSettings: ReturnType<typeof useInventory>["actions"]["updateSettings"];
 }) => {
   const [pendingDeletedProducts, setPendingDeletedProducts] = useState<DeprecatedProductOption[]>([]);
   const [confirmation, setConfirmation] = useState<ConfirmationDetails | undefined>();
+  const [backupMessage, setBackupMessage] = useState("");
+  const [pendingBackupText, setPendingBackupText] = useState("");
+  const [pastedBackupText, setPastedBackupText] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const batchProductIds = useMemo(() => new Set(snapshot.batches.map((batch) => batch.productId)), [snapshot.batches]);
   const deprecatedProductOptions = useMemo(
     () =>
@@ -952,6 +963,57 @@ const SettingsView = ({
 
   const describeProduct = ({ product, concept }: DeprecatedProductOption) =>
     `${concept?.name ?? "Unknown concept"} ${concept?.strength ?? ""} - ${product.brand} (${product.upc})`;
+
+  const createBackupFilename = () => `otc-inventory-backup-${new Date().toISOString().slice(0, 10)}.json`;
+
+  const handleDownloadBackup = async () => {
+    const backup = await exportBackup();
+    const blob = new Blob([serializeBackup(backup)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = createBackupFilename();
+    link.click();
+    URL.revokeObjectURL(url);
+    setBackupMessage("Backup file created.");
+  };
+
+  const handleCopyBackup = async () => {
+    try {
+      const backup = await exportBackup();
+      await navigator.clipboard.writeText(serializeBackup(backup));
+      setBackupMessage("Backup JSON copied to clipboard.");
+    } catch {
+      setBackupMessage("Clipboard copy was blocked. Use Download backup instead.");
+    }
+  };
+
+  const handleBackupFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      parseBackup(text);
+      setPendingBackupText(text);
+      setBackupMessage(`Ready to restore ${file.name}.`);
+    } catch (error) {
+      setBackupMessage(error instanceof Error ? error.message : "Backup file could not be read.");
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    try {
+      const backup = parseBackup(pendingBackupText);
+      await importBackup(backup);
+      setPendingBackupText("");
+      setPastedBackupText("");
+      setBackupMessage("Backup restored. Inventory data has been refreshed.");
+    } catch (error) {
+      setBackupMessage(error instanceof Error ? error.message : "Backup restore failed.");
+    }
+  };
 
   return (
     <section className="panel">
@@ -976,6 +1038,57 @@ const SettingsView = ({
         </label>
         <button className="primary" type="submit">Save settings</button>
       </form>
+
+      <div className="settings-maintenance">
+        <h2><Download /> Backup & Restore</h2>
+        <p className="form-note">
+          Export this browser's local data before changing devices or URLs. Restore replaces the current inventory data.
+        </p>
+        <div className="backup-actions">
+          <button className="secondary compact" onClick={() => void handleDownloadBackup()} type="button">
+            Download backup
+          </button>
+          <button className="secondary compact" onClick={() => void handleCopyBackup()} type="button">
+            Copy backup
+          </button>
+          <button className="secondary compact" onClick={() => fileInputRef.current?.click()} type="button">
+            Choose backup file
+          </button>
+        </div>
+        <input
+          accept="application/json,.json"
+          className="hidden-file-input"
+          onChange={(event) => void handleBackupFile(event)}
+          ref={fileInputRef}
+          type="file"
+        />
+        {backupMessage ? <p className="form-note">{backupMessage}</p> : null}
+        <label>
+          Paste backup JSON
+          <textarea
+            rows={5}
+            value={pastedBackupText}
+            onChange={(event) => setPastedBackupText(event.target.value)}
+            placeholder="Paste copied backup JSON here, then restore."
+          />
+        </label>
+        <button
+          className="secondary compact"
+          disabled={!pastedBackupText.trim()}
+          onClick={() => {
+            try {
+              parseBackup(pastedBackupText);
+              setPendingBackupText(pastedBackupText);
+              setBackupMessage("Ready to restore pasted backup.");
+            } catch (error) {
+              setBackupMessage(error instanceof Error ? error.message : "Backup JSON could not be read.");
+            }
+          }}
+          type="button"
+        >
+          Restore pasted backup
+        </button>
+      </div>
 
       <div className="settings-maintenance">
         <h2>Maintenance</h2>
@@ -1009,6 +1122,12 @@ const SettingsView = ({
                 : [{ label: "Deleted", value: 0 }]
             });
           }}
+        />
+      ) : null}
+      {pendingBackupText ? (
+        <RestoreBackupDialog
+          onCancel={() => setPendingBackupText("")}
+          onConfirm={handleRestoreBackup}
         />
       ) : null}
       {confirmation ? <ConfirmationDialog details={confirmation} onClose={() => setConfirmation(undefined)} /> : null}
@@ -1045,6 +1164,19 @@ const DeleteDeprecatedProductsDialog = ({
       <div className="dialog-actions">
         <button className="secondary compact" onClick={onCancel} type="button">Cancel</button>
         <button autoFocus className="primary danger-action" onClick={() => void onConfirm()} type="button">Delete products</button>
+      </div>
+    </section>
+  </div>
+);
+
+const RestoreBackupDialog = ({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => Promise<void> }) => (
+  <div className="dialog-backdrop" role="presentation">
+    <section aria-labelledby="restore-backup-title" aria-modal="true" className="confirmation-dialog" role="dialog">
+      <h2 id="restore-backup-title">Restore backup?</h2>
+      <p className="form-note">This will replace all concepts, products, batches, and settings currently stored at this URL.</p>
+      <div className="dialog-actions">
+        <button className="secondary compact" onClick={onCancel} type="button">Cancel</button>
+        <button autoFocus className="primary danger-action" onClick={() => void onConfirm()} type="button">Restore backup</button>
       </div>
     </section>
   </div>

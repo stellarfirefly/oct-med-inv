@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { backupRepository, type InventoryBackup } from "../database/repositories/backupRepository";
 import type { BatchInput, ConceptInput, ConceptPatch, ProductInput, ProductPatch } from "../database/repositories/inventoryRepository";
 import { inventoryRepository } from "../database/repositories/inventoryRepository";
 import { settingsRepository } from "../database/repositories/settingsRepository";
@@ -52,6 +53,8 @@ export const useInventory = () => {
         run(() => inventoryRepository.removeOneContainer(id), "One unopened container removed from inventory."),
       updateSettings: (patch: Partial<Omit<AppSettings, "id">>) =>
         run(() => settingsRepository.update(patch).then(() => undefined), "Settings updated."),
+      exportBackup: () => backupRepository.exportBackup(),
+      importBackup: (backup: InventoryBackup) => run(() => backupRepository.importBackup(backup), "Backup restored."),
       scan: async () => {
         if (!snapshot) return "";
         try {
